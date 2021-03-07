@@ -106,3 +106,17 @@ plt.yticks(range(num_groups), sorted_groups)
 plt.show()
 
 print("time used: ", time.time() - t_start)
+
+
+sum = 0
+for df in pd.read_csv(VIDEO_SENT, sep=',', chunksize=1000000):
+
+    # Raw ssim to db: -10.0 * log10( 1 - raw_ssim );
+    ssim_sum = df.loc[:, ("expt_id", "ssim_index")].groupby("expt_id").agg(['sum', 'count'])
+    for expt_id, r in ssim_sum.iterrows():
+        sum += r.loc["ssim_index"].loc["count"]
+
+
+sum_ack = 0
+for df in pd.read_csv(VIDEO_ACKED, sep=',', chunksize=1000000):
+    sum_ack += len(df)
