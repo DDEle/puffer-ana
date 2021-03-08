@@ -10,6 +10,7 @@ import figure
 import wget
 import datetime
 import os
+from pathlib import Path
 
 t_start = time.time()
 
@@ -113,7 +114,8 @@ def stream2scheme(stream_stats, video_sent_file, setting_file):
 
 def main():
     root = "data"
-    setting_file = "data/2021-02-08T11_2021-02-09T11_logs_expt_settings"
+    Path(root).mkdir(parents=True, exist_ok=True)
+    setting_file = "data/2021-03-06T11_2021-03-07T11_logs_expt_settings"
     timef = r"%Y-%m-%d"
     start_date = datetime.date(2021, 2, 1)
 
