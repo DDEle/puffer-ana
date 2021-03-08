@@ -1,122 +1,123 @@
 import json
 import time
+import utils
+import stats
 
 import numpy as np
 import pandas as pd
 from matplotlib import pyplot as plt
 import scipy.stats as st
+from collections import defaultdict
 
 t_start = time.time()
 
-CLIENT_BUFFER = "data/client_buffer_2021-01-24T11_2021-01-25T11.csv"
-EXPT_SETTINGS = "data/2021-01-24T11_2021-01-25T11_logs_expt_settings"
-SSIM = "data/ssim_2021-01-24T11_2021-01-25T11.csv"
-VIDEO_ACKED = "data/video_acked_2021-01-24T11_2021-01-25T11.csv"
-VIDEO_SENT = "data/video_sent_2021-01-24T11_2021-01-25T11.csv"
+
+def print_time(process=None):
+    print((f"[{process}] " if process else "") +
+          f"time used: ", time.time() - t_start)
 
 
-def get_expt_settings(f_name):
-    expt_settings = {}
-    with open(f_name) as f:
-        ls = f.readlines()
+DATE = "2021-02-08T11_2021-02-09T11"
 
-    for line in ls:
-        idx, s = line.split(" ", 1)
-        doc = json.loads(s)
+CLIENT_BUFFER = f"data/client_buffer_{DATE}.csv"
+EXPT_SETTINGS = f"data/{DATE}_logs_expt_settings"
+SSIM = f"data/ssim_{DATE}.csv"
+VIDEO_ACKED = f"data/video_acked_{DATE}.csv"
+VIDEO_SENT = f"data/video_sent_{DATE}.csv"
+STREAM_IDX = ["session_id", "index"]
 
-        name = doc.get("abr_name")
-        if not name:
-            name = doc.get("abr")
-        group = f"{name}/{doc.get('cc')}"
-        doc["group"] = group
-        expt_settings[int(idx)] = doc
-    return expt_settings
+expt_set = utils.get_expt_settings(EXPT_SETTINGS)
 
 
 def ssim2db(ssim):
     return -10 * np.log10(1 - ssim)
 
 
-expt_set = get_expt_settings(EXPT_SETTINGS)
+def ana_client_buffer(f_name, stream_data):
+    """ Fill in init / startup / last / cum_rebuf
+    """
+    for df in pd.read_csv(CLIENT_BUFFER, sep=',', chunksize=1_000_000):
+        # init of each stream
+        for stream_id, row in df[df["event"] == "init"].loc[:, ("time (ns GMT)", *STREAM_IDX)].groupby(
+                STREAM_IDX).agg("min").iterrows():
+            stream_data[stream_id].init = min(
+                stream_data[stream_id].init, row["time (ns GMT)"])
 
-expt_ssim_sum = {}
-expt_count = {}
-for df in pd.read_csv(VIDEO_SENT, sep=',', chunksize=1000000):
+        # start of each stream
+        for stream_id, row in df[df["event"] == "startup"].loc[:, ("time (ns GMT)", *STREAM_IDX)].groupby(
+                STREAM_IDX).agg("min").iterrows():
+            stream_data[stream_id].startup = min(
+                stream_data[stream_id].startup, row["time (ns GMT)"])
 
-    # Raw ssim to db: -10.0 * log10( 1 - raw_ssim );
-    ssim_sum = df.loc[:, ("expt_id", "ssim_index")].groupby("expt_id").agg(['sum', 'count'])
-    for expt_id, r in ssim_sum.iterrows():
-        if expt_id in expt_ssim_sum:
-            expt_ssim_sum[expt_id] += r.loc["ssim_index"].loc["sum"]
-            expt_count[expt_id] += r.loc["ssim_index"].loc["count"]
-        else:
-            expt_ssim_sum[expt_id] = r.loc["ssim_index"].loc["sum"]
-            expt_count[expt_id] = r.loc["ssim_index"].loc["count"]
-        print(expt_ssim_sum.keys())
+        # last message of each stream
+        for stream_id, row in df.loc[:, ("time (ns GMT)", *STREAM_IDX)].groupby(
+                STREAM_IDX).agg("max").iterrows():
+            stream_data[stream_id].last = max(
+                stream_data[stream_id].last, row["time (ns GMT)"])
 
-# not group abr
-# expt_ssim_mean = {k: expt_ssim_sum[k] / expt_count[k]
-#                   for k in expt_ssim_sum.keys()}
+        # cum_rebuf of each stream
+        for stream_id, row in df.loc[:, ("cum_rebuf", *STREAM_IDX)].groupby(
+                STREAM_IDX).agg("max").iterrows():
+            stream_data[stream_id].cum_rebuf = max(
+                stream_data[stream_id].cum_rebuf, row["cum_rebuf"])
 
-# group abr
-groups = {}
-for expt_id in expt_count.keys():
-    g = expt_set[expt_id]["group"]
-    if g not in groups:
-        groups[g] = set()
-    groups[g].add(expt_id)
-
-expt_group_count = {g: sum(expt_count[e] for e in groups[g]) for g in groups.keys()}
-expt_group_ssim_mean = {g: sum(expt_ssim_sum[e] for e in groups[g]) / expt_group_count[g]
-                        for g in groups.keys()}
-expt_ssim_mean = {k: expt_group_ssim_mean[expt_set[k]["group"]] for k in expt_ssim_sum.keys()}
-
-# second pass to calculate std
-expt_ssim_var_sum = {}
-for df in pd.read_csv(VIDEO_SENT, sep=',', chunksize=1000000):
-    df["ssim_var"] = (df["expt_id"].map(expt_ssim_mean) - df["ssim_index"]) ** 2
-
-    ssim_sum = df.loc[:, ("expt_id", "ssim_var")].groupby("expt_id").agg(['sum'])
-    for expt_id, r in ssim_sum.iterrows():
-        if expt_id in expt_ssim_var_sum:
-            expt_ssim_var_sum[expt_id] += r.loc["ssim_var"].loc["sum"]
-        else:
-            expt_ssim_var_sum[expt_id] = r.loc["ssim_var"].loc["sum"]
-        print(expt_ssim_var_sum.keys())
-# not group abr
-expt_ssim_std = {k: (expt_ssim_var_sum[k] / expt_count[k]) ** .5
-                 for k in expt_ssim_var_sum.keys()}
-
-# group abr
-expt_group_ssim_std = {g: (sum(expt_ssim_var_sum[e] for e in groups[g]) / expt_group_count[g]) ** .5
-                       for g in groups.keys()}
-
-sorted_groups = sorted(groups.keys())
-num_groups = len(sorted_groups)
-
-data_dict = {}
-for y in range(num_groups):
-    g = sorted_groups[y]
-    z95 = st.norm.ppf(.975)
-
-    lower = ssim2db(expt_group_ssim_mean[g] - z95 * expt_group_ssim_std[g] / (expt_group_count[g] ** .5))
-    upper = ssim2db(expt_group_ssim_mean[g] + z95 * expt_group_ssim_std[g] / (expt_group_count[g] ** .5))
-    plt.plot((lower, upper), (y, y), 'ro-', color='orange')
-plt.yticks(range(num_groups), sorted_groups)
-plt.show()
-
-print("time used: ", time.time() - t_start)
+        print_time("ana_client_buffer")
 
 
-sum = 0
-for df in pd.read_csv(VIDEO_SENT, sep=',', chunksize=1000000):
+def ana_video_sent(f_name, stream_data):
+    for df in pd.read_csv(f_name, sep=',', chunksize=1_000_000):
+        df["ssim_db"] = df["ssim_index"].mask(
+            ~df['ssim_index'].between(0, 0.99999))
+        df["ssim_db"] = ssim2db(df.loc[:, "ssim_db"])
+        df["ssim_1"] = df["ssim_index"] == 1
+        for stream_id, row in df.groupby(STREAM_IDX).agg({"ssim_db": ["sum", "count"], "ssim_1": "sum"}).iterrows():
+            stream_data[stream_id].sum_ssim_db += row.ssim_db['sum']
+            stream_data[stream_id].count_ssim_sample += row.ssim_db['count']
+            stream_data[stream_id].count_ssim_1 += row.ssim_1["sum"]
+        print_time("ana_video_sent")
 
-    # Raw ssim to db: -10.0 * log10( 1 - raw_ssim );
-    ssim_sum = df.loc[:, ("expt_id", "ssim_index")].groupby("expt_id").agg(['sum', 'count'])
-    for expt_id, r in ssim_sum.iterrows():
-        sum += r.loc["ssim_index"].loc["count"]
+
+def get_stream_exp_id_map(f_name):
+    ret = {}
+    for df in pd.read_csv(f_name, sep=',', chunksize=1_000_000):
+        for stream_id, row in df.loc[:, ("expt_id", *STREAM_IDX)].groupby(STREAM_IDX).agg(
+                ["nunique", "first"]).iterrows():
+            assert row.expt_id["nunique"] == 1
+            ret[stream_id] = row.expt_id["first"]
+        print_time("get expid map")
+    return ret
 
 
-sum_ack = 0
-for df in pd.read_csv(VIDEO_ACKED, sep=',', chunksize=1000000):
-    sum_ack += len(df)
+def stream2scheme(stream_stats, video_sent_file):
+    stream_exp_id_map = get_stream_exp_id_map(video_sent_file)
+    group_stat = defaultdict(stats.GroupStat)
+    for stream_id in stream_stats:
+        expt_id = stream_exp_id_map[stream_id]
+        group_name = expt_set[expt_id].get("group")
+        if not stream_stats[stream_id].invalid:
+            group_stat[group_name].total_play += stream_stats[stream_id].total_play
+            group_stat[group_name].total_stall += stream_stats[stream_id].total_stall
+            group_stat[group_name].total_ssim += stream_stats[stream_id].ssim_db_mean
+            group_stat[group_name].num_streams += 1
+
+    for k in group_stat:
+        g = group_stat[k]
+        print(k)
+        print("  ", f"{g.play_stall_ratio * 100:.4f}%")
+        print("  ", f"{g.mean_ssim:.2f}")
+    return group_stat
+
+
+def main():
+    stream_data = defaultdict(stats.StreamStat)
+
+    ana_client_buffer(CLIENT_BUFFER, stream_data)
+    ana_video_sent(VIDEO_SENT, stream_data)
+
+    group_stat = stream2scheme(stream_data, VIDEO_SENT)
+
+    pass
+
+
+if __name__ == '__main__':
+    main()
