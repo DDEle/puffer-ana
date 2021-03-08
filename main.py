@@ -126,6 +126,7 @@ def main():
     for f in need_files:
         url = f'https://storage.googleapis.com/puffer-data-release/{file_date}/{f}_{file_date}.csv'
         wget.download(url, f'{root}/{f}_{file_date}.csv')
+        print_time(f'{root}/{f}_{file_date}.csv downloaded')
 
     stream_data = defaultdict(stats.StreamStat)
 
