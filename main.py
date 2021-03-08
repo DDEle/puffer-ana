@@ -37,7 +37,7 @@ def ssim2db(ssim):
 def ana_client_buffer(f_name, stream_data):
     """ Fill in init / startup / last / cum_rebuf
     """
-    for df in pd.read_csv(CLIENT_BUFFER, sep=',', chunksize=1_000_000):
+    for df in pd.read_csv(f_name, sep=',', chunksize=1_000_000):
         # init of each stream
         for stream_id, row in df[df["event"] == "init"].loc[:, ("time (ns GMT)", *STREAM_IDX)].groupby(
                 STREAM_IDX).agg("min").iterrows():
@@ -127,11 +127,11 @@ def main():
 
     stream_data = defaultdict(stats.StreamStat)
 
-    ana_client_buffer(f"client_buffer_{file_date}.csv", stream_data)
-    ana_video_sent(f"video_sent_{file_date}.csv", stream_data)
+    ana_client_buffer(f"{root}/client_buffer_{file_date}.csv", stream_data)
+    ana_video_sent(f"{root}/video_sent_{file_date}.csv", stream_data)
 
     group_stat = stream2scheme(
-        stream_data, f"video_sent_{file_date}.csv", setting_file)
+        stream_data, f"{root}/video_sent_{file_date}.csv", setting_file)
     np.save(f"{file_date}.npy", group_stat)
 
     figure.plot(group_stat)
