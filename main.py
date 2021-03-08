@@ -5,9 +5,8 @@ import stats
 
 import numpy as np
 import pandas as pd
-from matplotlib import pyplot as plt
-import scipy.stats as st
 from collections import defaultdict
+import figure
 
 t_start = time.time()
 
@@ -24,6 +23,7 @@ EXPT_SETTINGS = f"data/{DATE}_logs_expt_settings"
 SSIM = f"data/ssim_{DATE}.csv"
 VIDEO_ACKED = f"data/video_acked_{DATE}.csv"
 VIDEO_SENT = f"data/video_sent_{DATE}.csv"
+SCHEME_STAT_NPY = f"data/scheme_stat_{DATE}.npy"
 STREAM_IDX = ["session_id", "index"]
 
 expt_set = utils.get_expt_settings(EXPT_SETTINGS)
@@ -97,7 +97,7 @@ def stream2scheme(stream_stats, video_sent_file):
         if not stream_stats[stream_id].invalid:
             group_stat[group_name].total_play += stream_stats[stream_id].total_play
             group_stat[group_name].total_stall += stream_stats[stream_id].total_stall
-            group_stat[group_name].total_ssim += stream_stats[stream_id].ssim_db_mean
+            group_stat[group_name].total_ssim += stream_stats[stream_id].ssim_db_mean  # TODO
             group_stat[group_name].num_streams += 1
 
     for k in group_stat:
@@ -115,7 +115,9 @@ def main():
     ana_video_sent(VIDEO_SENT, stream_data)
 
     group_stat = stream2scheme(stream_data, VIDEO_SENT)
+    np.save(SCHEME_STAT_NPY, group_stat)
 
+    figure.plot(group_stat)
     pass
 
 
