@@ -7,6 +7,9 @@ import numpy as np
 import pandas as pd
 from collections import defaultdict
 import figure
+import wget
+import datetime
+import os
 
 t_start = time.time()
 
@@ -16,17 +19,15 @@ def print_time(process=None):
           f"time used: ", time.time() - t_start)
 
 
-DATE = "2021-02-08T11_2021-02-09T11"
+# DATE = "2021-02-08T11_2021-02-09T11"
 
-CLIENT_BUFFER = f"data/client_buffer_{DATE}.csv"
-EXPT_SETTINGS = f"data/{DATE}_logs_expt_settings"
-SSIM = f"data/ssim_{DATE}.csv"
-VIDEO_ACKED = f"data/video_acked_{DATE}.csv"
-VIDEO_SENT = f"data/video_sent_{DATE}.csv"
-SCHEME_STAT_NPY = f"data/scheme_stat_{DATE}.npy"
+# CLIENT_BUFFER = f"data/client_buffer_{DATE}.csv"
+# EXPT_SETTINGS = f"data/{DATE}_logs_expt_settings"
+# SSIM = f"data/ssim_{DATE}.csv"
+# VIDEO_ACKED = f"data/video_acked_{DATE}.csv"
+# VIDEO_SENT = f"data/video_sent_{DATE}.csv"
+# SCHEME_STAT_NPY = f"data/scheme_stat_{DATE}.npy"
 STREAM_IDX = ["session_id", "index"]
-
-expt_set = utils.get_expt_settings(EXPT_SETTINGS)
 
 
 def ssim2db(ssim):
@@ -88,7 +89,8 @@ def get_stream_exp_id_map(f_name):
     return ret
 
 
-def stream2scheme(stream_stats, video_sent_file):
+def stream2scheme(stream_stats, video_sent_file, setting_file):
+    expt_set = utils.get_expt_settings(setting_file)
     stream_exp_id_map = get_stream_exp_id_map(video_sent_file)
     group_stat = defaultdict(stats.GroupStat)
     for stream_id in stream_stats:
@@ -97,7 +99,8 @@ def stream2scheme(stream_stats, video_sent_file):
         if not stream_stats[stream_id].invalid:
             group_stat[group_name].total_play += stream_stats[stream_id].total_play
             group_stat[group_name].total_stall += stream_stats[stream_id].total_stall
-            group_stat[group_name].total_ssim += stream_stats[stream_id].ssim_db_mean  # TODO
+            # TODO
+            group_stat[group_name].total_ssim += stream_stats[stream_id].ssim_db_mean
             group_stat[group_name].num_streams += 1
 
     for k in group_stat:
@@ -109,16 +112,32 @@ def stream2scheme(stream_stats, video_sent_file):
 
 
 def main():
+    root = "data"
+    setting_file = "data/2021-02-08T11_2021-02-09T11_logs_expt_settings"
+    timef = r"%Y-%m-%d"
+    start_date = datetime.date(2021, 2, 1)
+
+    need_files = ["video_sent", "ssim", "client_buffer"]
+    one_day = datetime.timedelta(days=1)
+    file_date = f"{start_date.strftime(timef)}T11_{(start_date + one_day).strftime(timef)}T11"
+
+    for f in need_files:
+        url = f'https://storage.googleapis.com/puffer-data-release/{file_date}/{f}_{file_date}.csv'
+        wget.download(url, f'{root}/{f}_{file_date}.csv')
+
     stream_data = defaultdict(stats.StreamStat)
 
-    ana_client_buffer(CLIENT_BUFFER, stream_data)
-    ana_video_sent(VIDEO_SENT, stream_data)
+    ana_client_buffer(f"client_buffer_{file_date}.csv", stream_data)
+    ana_video_sent(f"video_sent_{file_date}.csv", stream_data)
 
-    group_stat = stream2scheme(stream_data, VIDEO_SENT)
-    np.save(SCHEME_STAT_NPY, group_stat)
+    group_stat = stream2scheme(
+        stream_data, f"video_sent_{file_date}.csv", setting_file)
+    np.save(f"{file_date}.npy", group_stat)
 
     figure.plot(group_stat)
-    pass
+
+    for f in need_files:
+        os.remove(f'{root}/{f}_{file_date}.csv')
 
 
 if __name__ == '__main__':
