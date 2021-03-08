@@ -117,30 +117,36 @@ def main():
     Path(root).mkdir(parents=True, exist_ok=True)
     setting_file = "2021-03-06T11_2021-03-07T11-logs-expt_settings"
     timef = r"%Y-%m-%d"
-    start_date = datetime.date(2021, 2, 1)
+    
+    start_date = datetime.date(2021, 1, 1)
+    for _ in range(60):
 
-    need_files = ["video_sent", "ssim", "client_buffer"]
-    one_day = datetime.timedelta(days=1)
-    file_date = f"{start_date.strftime(timef)}T11_{(start_date + one_day).strftime(timef)}T11"
+        need_files = ["video_sent", "ssim", "client_buffer"]
+        one_day = datetime.timedelta(days=1)
+        file_date = f"{start_date.strftime(timef)}T11_{(start_date + one_day).strftime(timef)}T11"
+        print_time(file_date)
 
-    for f in need_files:
-        url = f'https://storage.googleapis.com/puffer-data-release/{file_date}/{f}_{file_date}.csv'
-        wget.download(url, f'{root}/{f}_{file_date}.csv')
-        print_time(f'{root}/{f}_{file_date}.csv downloaded')
+        for f in need_files:
+            url = f'https://storage.googleapis.com/puffer-data-release/{file_date}/{f}_{file_date}.csv'
+            wget.download(url, f'{root}/{f}_{file_date}.csv')
+            print_time(f'{root}/{f}_{file_date}.csv downloaded')
 
-    stream_data = defaultdict(stats.StreamStat)
+        stream_data = defaultdict(stats.StreamStat)
 
-    ana_client_buffer(f"{root}/client_buffer_{file_date}.csv", stream_data)
-    ana_video_sent(f"{root}/video_sent_{file_date}.csv", stream_data)
+        ana_client_buffer(f"{root}/client_buffer_{file_date}.csv", stream_data)
+        ana_video_sent(f"{root}/video_sent_{file_date}.csv", stream_data)
 
-    group_stat = stream2scheme(
-        stream_data, f"{root}/video_sent_{file_date}.csv", setting_file)
-    np.save(f"{file_date}.npy", group_stat)
+        group_stat = stream2scheme(
+            stream_data, f"{root}/video_sent_{file_date}.csv", setting_file)
+        np.save(f"{file_date}.npy", group_stat)
 
-    figure.plot(group_stat)
+        figure.plot(group_stat)
 
-    for f in need_files:
-        os.remove(f'{root}/{f}_{file_date}.csv')
+        for f in need_files:
+            os.remove(f'{root}/{f}_{file_date}.csv')
+        
+        start_date += one_day
+        
 
 
 if __name__ == '__main__':
