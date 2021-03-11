@@ -1,4 +1,3 @@
-import json
 import time
 import utils
 import stats
@@ -11,6 +10,7 @@ import wget
 import datetime
 import os
 from pathlib import Path
+import platform
 
 t_start = time.time()
 
@@ -77,7 +77,7 @@ def ana_client_buffer(f_name, stream_data):
                     sStat.last_play = e["time (ns GMT)"]
                     sStat.last_play_cum_rebuf = e["cum_rebuf"]
                 elif e["event"] == "timer":
-                    if sStat.playing == True:
+                    if sStat.playing:
                         sStat.last_play = e["time (ns GMT)"]
                         sStat.last_play_cum_rebuf = e["cum_rebuf"]
                 # do nothing for init event
@@ -144,7 +144,7 @@ def stream2scheme(stream_stats, video_sent_file, setting_file):
         print(k)
         print("  ", f"{g.play_stall_ratio * 100:.4f}%")
         print("  ", f"{g.mean_ssim:.2f}")
-    
+
     print_time("result printed")
     return group_stat
 
@@ -156,11 +156,11 @@ def main():
     timef = r"%Y-%m-%d"
     one_day = datetime.timedelta(days=1)
 
-    start_date = datetime.date(2021, 1, 1)
+    curr_date = datetime.date(2021, 1, 1)
     for _ in range(60):
         try:
             need_files = ["video_sent", "ssim", "client_buffer"]
-            file_date = f"{start_date.strftime(timef)}T11_{(start_date + one_day).strftime(timef)}T11"
+            file_date = f"{curr_date.strftime(timef)}T11_{(curr_date + one_day).strftime(timef)}T11"
             print_time(file_date)
 
             for f in need_files:
@@ -182,14 +182,18 @@ def main():
             Path("out").mkdir(parents=True, exist_ok=True)
             np.save(f"out/{file_date}.npy", group_stat)
 
-            figure.plot(group_stat)
+            # figure.plot(group_stat)
+        except Exception as e:
+            print(curr_date)
+            print(e)
         finally:
             try:
-                for f in need_files:
-                    os.remove(f'{root}/{f}_{file_date}.csv')
+                if "amz" in platform.release():
+                    for f in need_files:
+                        os.remove(f'{root}/{f}_{file_date}.csv')
             except:
                 pass
-            start_date += one_day
+            curr_date += one_day
 
 
 if __name__ == '__main__':
