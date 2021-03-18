@@ -102,7 +102,33 @@ class GroupStat:
         ratios = self.streams["stall_time"] / \
             self.streams["watch_time"]
         z95 = st.norm.ppf(.975)
-        var = (self.streams["watch_time"] * (ratios - mean) ** 2).sum() / self.total_watch
+        var = (self.streams["watch_time"] * (ratios - mean)
+               ** 2).sum() / self.total_watch
         stddev = np.sqrt(var)
         sem = stddev * np.sqrt(self.sum_squared_weights)
         return mean - z95 * sem, mean, mean + z95 * sem
+
+
+def ssim_stat_db(df):
+    total_watch = df["watch_time"].sum()
+    sum_squared_weights = (df["watch_time"] ** 2).sum() / total_watch ** 2
+    mean_ssim = (df["watch_time"] * df["ssim_index_mean"]).sum() / total_watch
+    z95 = st.norm.ppf(.975)
+    var = (df["watch_time"] * (df["ssim_index_mean"] - mean_ssim)
+           ** 2).sum() / total_watch
+    stddev = np.sqrt(var)
+    sem = stddev * np.sqrt(sum_squared_weights)
+    return ssim2db(mean_ssim - z95 * sem), ssim2db(mean_ssim), ssim2db(mean_ssim + z95 * sem)
+
+
+def stall_ratio_stat(df):
+    total_watch = df["watch_time"].sum()
+    sum_squared_weights = (df["watch_time"] ** 2).sum() / total_watch ** 2
+    mean_ratio = df["stall_time"].sum() / total_watch
+    ratios = df["stall_time"] / df["watch_time"]
+    z95 = st.norm.ppf(.975)
+    var = (df["watch_time"] * (ratios - mean_ratio)
+           ** 2).sum() / total_watch
+    stddev = np.sqrt(var)
+    sem = stddev * np.sqrt(sum_squared_weights)
+    return mean_ratio - z95 * sem, mean_ratio, mean_ratio + z95 * sem
